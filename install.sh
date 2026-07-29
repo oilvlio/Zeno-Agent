@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="${ZENO_AGENT_REPO:-shuijiao1/Zeno-Agent}"
+REPO="${ZENO_AGENT_REPO:-shui1iao/Zeno-Agent}"
 VERSION="${ZENO_AGENT_VERSION:-latest}"
 INSTALL_DIR="${ZENO_AGENT_INSTALL_DIR:-}"
 BIN="${ZENO_AGENT_BIN:-}"

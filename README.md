@@ -8,7 +8,7 @@ Zeno Agent 是 Zeno 的独立主机探针，负责主动向 Zeno Controller 上�
 - TCP Ping / ICMP Ping / HTTP GET 探测结果
 - 公网 IPv4 / IPv6 / 国家码 best-effort 识别
 
-Controller 本体仓库：<https://github.com/shuijiao1/Zeno>
+Controller 本体仓库：<https://github.com/shui1iao/Zeno>
 
 ## 支持矩阵与兼容性
 
@@ -20,7 +20,7 @@ Controller 本体仓库：<https://github.com/shuijiao1/Zeno>
 
 Linux 官方安装器要求 systemd；其他 init 系统只能手动运行二进制，不属于安装器支持范围。Windows on ARM 需要支持原生 arm64 服务的系统版本。v0.6.5 修复了 Windows 从旧版升级时，管理员预建的数据目录因虚拟服务账户缺少 DACL 修改权限而导致服务在安装回执前退出的问题。
 
-Controller 与 Agent 独立发布，版本号不要求相同。当前验证组合不在 README 硬编码，以免过期；请以 Controller 的 [COMPATIBILITY.md](https://github.com/shuijiao1/Zeno/blob/main/docs/COMPATIBILITY.md) 和对应 Release Notes 为准。未列出的旧 Agent 组合仅为 best effort，排障前请先升级。
+Controller 与 Agent 独立发布，版本号不要求相同。当前验证组合不在 README 硬编码，以免过期；请以 Controller 的 [COMPATIBILITY.md](https://github.com/shui1iao/Zeno/blob/main/docs/COMPATIBILITY.md) 和对应 Release Notes 为准。未列出的旧 Agent 组合仅为 best effort，排障前请先升级。
 
 ## 一键安装
 
@@ -98,4 +98,4 @@ Zeno Agent 不提供远程命令、终端、文件管理或任务执行能力，
 
 Agent 会采集/上报主机名、OS/kernel/架构/虚拟化、CPU/内存/swap/磁盘、进程数/TCP 连接数、网络接口累计流量和速率、uptime、best-effort 公网 IPv4/IPv6 与 GeoIP 国家码，以及管理员配置的 ICMP/TCP/HTTP 探测结果。Controller 的 public page/API 可展示管理员配置的节点名称/地区、公网地址字段、在线状态、资源/流量摘要、到期/配额和探测统计；不会展示 runtime/enrollment token 或 Agent 本地 token 路径。管理员应在公开页面上线前复核节点名称、地址和地区是否适合公开。
 
-安全漏洞请通过 <https://github.com/shuijiao1/Zeno-Agent/security/advisories/new> 私密报告；也请参阅 Controller [SECURITY.md](https://github.com/shuijiao1/Zeno/blob/main/docs/SECURITY.md)。不要在公开 Issue 中粘贴 runtime/enrollment token、完整安装命令、Authorization header、服务定义、token 文件、Controller 数据库或通知凭据。普通 bug 报告请只提供脱敏后的 Agent/Controller 版本、OS/架构、错误类别和相关时间窗。
+安全漏洞请通过 <https://github.com/shui1iao/Zeno-Agent/security/advisories/new> 私密报告；也请参阅 Controller [SECURITY.md](https://github.com/shui1iao/Zeno/blob/main/docs/SECURITY.md)。不要在公开 Issue 中粘贴 runtime/enrollment token、完整安装命令、Authorization header、服务定义、token 文件、Controller 数据库或通知凭据。普通 bug 报告请只提供脱敏后的 Agent/Controller 版本、OS/架构、错误类别和相关时间窗。

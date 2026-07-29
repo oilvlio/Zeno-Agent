@@ -1,4 +1,4 @@
-module github.com/shuijiao1/Zeno-Agent
+module github.com/shui1iao/Zeno-Agent
 
 go 1.25
 

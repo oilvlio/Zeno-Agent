@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/shuijiao1/Zeno-Agent/internal/agent"
+	"github.com/shui1iao/Zeno-Agent/internal/agent"
 )
 
 // defaultVersion is replaced by the release workflow via -ldflags -X. Keep it

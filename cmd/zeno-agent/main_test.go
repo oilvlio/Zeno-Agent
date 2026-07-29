@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shuijiao1/Zeno-Agent/internal/agent"
+	"github.com/shui1iao/Zeno-Agent/internal/agent"
 )
 
 func TestDefaultReportIntervalsAreSplitByPurpose(t *testing.T) {

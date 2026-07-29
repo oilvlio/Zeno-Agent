@@ -4,7 +4,7 @@ try {
   [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.ServicePointManager]::SecurityProtocol
 } catch {}
 
-$Repo = if ($env:ZENO_AGENT_REPO) { $env:ZENO_AGENT_REPO } else { 'shuijiao1/Zeno-Agent' }
+$Repo = if ($env:ZENO_AGENT_REPO) { $env:ZENO_AGENT_REPO } else { 'shui1iao/Zeno-Agent' }
 $Version = if ($env:ZENO_AGENT_VERSION) { $env:ZENO_AGENT_VERSION } else { 'latest' }
 $InstallDir = if ($env:ZENO_AGENT_INSTALL_DIR) { $env:ZENO_AGENT_INSTALL_DIR } else { Join-Path $env:ProgramFiles 'Zeno Agent' }
 $Bin = if ($env:ZENO_AGENT_BIN) { $env:ZENO_AGENT_BIN } else { Join-Path $InstallDir 'zeno-agent.exe' }
