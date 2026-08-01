@@ -337,11 +337,6 @@ func connectionCounts() (tcp int64, udp int64, err error) {
 	return tcp4 + tcp6, udp4 + udp6, nil
 }
 
-func tcpConnectionCountFromFile(path string) int64 {
-	count, _ := tcpConnectionCountFromFileResult(path)
-	return count
-}
-
 func tcpConnectionCountFromFileResult(path string) (int64, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {

@@ -20,10 +20,10 @@ git merge-base --is-ancestor "$commit" "$main_ref" || {
   echo "release commit $commit is not reachable from $main_ref" >&2
   exit 1
 }
-git diff --quiet && git diff --cached --quiet || {
+if ! git diff --quiet || ! git diff --cached --quiet; then
   echo "release checkout is not clean" >&2
   exit 1
-}
+fi
 
 python3 - "$tag" <<'PY'
 import re

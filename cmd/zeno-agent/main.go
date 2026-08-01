@@ -420,14 +420,18 @@ func (m *probeTargetManager) beginRefresh(ctx context.Context) error {
 	if m == nil {
 		return fmt.Errorf("probe target manager is nil")
 	}
+	return m.beginGate(ctx, &m.refreshGate)
+}
+
+func (m *probeTargetManager) beginGate(ctx context.Context, gateField *chan struct{}) error {
 	// Managers are normally created by newProbeTargetManager. Lazily initialize
 	// under the manager mutex for zero-value compatibility.
 	m.mu.Lock()
-	if m.refreshGate == nil {
-		m.refreshGate = make(chan struct{}, 1)
-		m.refreshGate <- struct{}{}
+	if *gateField == nil {
+		*gateField = make(chan struct{}, 1)
+		*gateField <- struct{}{}
 	}
-	gate := m.refreshGate
+	gate := *gateField
 	m.mu.Unlock()
 	select {
 	case <-ctx.Done():
@@ -438,34 +442,23 @@ func (m *probeTargetManager) beginRefresh(ctx context.Context) error {
 }
 
 func (m *probeTargetManager) endRefresh() {
-	m.mu.Lock()
-	gate := m.refreshGate
-	m.mu.Unlock()
-	gate <- struct{}{}
+	m.endGate(&m.refreshGate)
 }
 
 func (m *probeTargetManager) beginRun(ctx context.Context) error {
 	if m == nil {
 		return fmt.Errorf("probe target manager is nil")
 	}
-	m.mu.Lock()
-	if m.runGate == nil {
-		m.runGate = make(chan struct{}, 1)
-		m.runGate <- struct{}{}
-	}
-	gate := m.runGate
-	m.mu.Unlock()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-gate:
-		return nil
-	}
+	return m.beginGate(ctx, &m.runGate)
 }
 
 func (m *probeTargetManager) endRun() {
+	m.endGate(&m.runGate)
+}
+
+func (m *probeTargetManager) endGate(gateField *chan struct{}) {
 	m.mu.Lock()
-	gate := m.runGate
+	gate := *gateField
 	m.mu.Unlock()
 	gate <- struct{}{}
 }

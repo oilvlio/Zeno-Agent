@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -33,15 +32,6 @@ type AgentAPIStatusError struct {
 
 func (e *AgentAPIStatusError) Error() string {
 	return fmt.Sprintf("agent api %s %s returned %d", e.Method, e.Path, e.StatusCode)
-}
-
-func IsAgentAPIStatus(err error, statusCode int) bool {
-	var statusErr *AgentAPIStatusError
-	return errors.As(err, &statusErr) && statusErr.StatusCode == statusCode
-}
-
-func NewClient(baseURL, nodeID, token string) *Client {
-	return NewClientWithOptions(baseURL, nodeID, token, ClientOptions{})
 }
 
 type ClientOptions struct {
@@ -73,10 +63,6 @@ func newAgentHTTPClient() *http.Client {
 		},
 		Transport: transport,
 	}
-}
-
-func ValidateControllerURL(baseURL string) error {
-	return ValidateControllerURLWithOptions(baseURL, false)
 }
 
 func ValidateControllerURLWithOptions(baseURL string, allowInsecureHTTP bool) error {
@@ -123,14 +109,6 @@ func (c *Client) PostState(ctx context.Context, state StateSample) error {
 	return c.doJSON(ctx, http.MethodPost, "/api/agent/v1/state", state, nil)
 }
 
-func (c *Client) FetchProbeTargets(ctx context.Context) ([]ProbeTarget, error) {
-	response, err := c.FetchProbeConfig(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return response.Targets, nil
-}
-
 func (c *Client) FetchProbeConfig(ctx context.Context) (ProbeTargetsResponse, error) {
 	var response ProbeTargetsResponse
 	if err := c.doJSON(ctx, http.MethodGet, "/api/agent/v1/probe-targets", nil, &response); err != nil {
@@ -138,24 +116,6 @@ func (c *Client) FetchProbeConfig(ctx context.Context) (ProbeTargetsResponse, er
 	}
 	response.Targets = SanitizeProbeTargets(response.Targets)
 	return response, nil
-}
-
-func (c *Client) PostProbeResults(ctx context.Context, rounds []ProbeRound) error {
-	configVersion, err := commonProbeConfigVersion(rounds)
-	if err != nil {
-		return err
-	}
-	payload := ProbeResultsRequest{ConfigVersion: configVersion, Rounds: make([]probeRoundPayload, 0, len(rounds))}
-	for _, round := range rounds {
-		payload.Rounds = append(payload.Rounds, probeRoundPayload{
-			RoundID:  round.RoundID,
-			TargetID: round.TargetID,
-			TS:       round.TS.UTC().Unix(),
-			Type:     round.Type,
-			Samples:  round.Samples,
-		})
-	}
-	return c.doJSON(ctx, http.MethodPost, "/api/agent/v1/probe-results", payload, nil)
 }
 
 func commonProbeConfigVersion(rounds []ProbeRound) (int64, error) {

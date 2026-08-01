@@ -35,7 +35,7 @@ func TestProbeUploaderRetriesRetryableStatusesWithPersistentExponentialBackoff(t
 				t.Fatal(err)
 			}
 			var caps []time.Duration
-			uploader := NewProbeUploader(spool, NewClient(server.URL, "node", "token"), ProbeUploaderOptions{
+			uploader := NewProbeUploader(spool, newTestClient(server.URL, "node", "token"), ProbeUploaderOptions{
 				Now: func() time.Time { return clock },
 				Jitter: func(cap time.Duration) time.Duration {
 					caps = append(caps, cap)
@@ -55,7 +55,7 @@ func TestProbeUploaderRetriesRetryableStatusesWithPersistentExponentialBackoff(t
 				t.Fatalf("retry became due before next_at after restart: %#v, %v", due, err)
 			}
 			clock = now.Add(time.Second)
-			uploader = NewProbeUploader(restarted, NewClient(server.URL, "node", "token"), ProbeUploaderOptions{
+			uploader = NewProbeUploader(restarted, newTestClient(server.URL, "node", "token"), ProbeUploaderOptions{
 				Now: func() time.Time { return clock },
 				Jitter: func(cap time.Duration) time.Duration {
 					caps = append(caps, cap)
@@ -95,7 +95,7 @@ func TestProbeUploaderUsesClampedRetryAfterFor429(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	uploader := NewProbeUploader(spool, NewClient(server.URL, "node", "token"), ProbeUploaderOptions{
+	uploader := NewProbeUploader(spool, newTestClient(server.URL, "node", "token"), ProbeUploaderOptions{
 		Now: func() time.Time { return now }, Jitter: func(time.Duration) time.Duration { return 0 },
 	})
 	if err := uploader.UploadOne(context.Background()); err == nil {
@@ -114,7 +114,7 @@ func TestProbeUploaderRetriesTimeoutAndDoesNotLeakTransportText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	client := NewClient("http://127.0.0.1:12345", "node", "token")
+	client := newTestClient("http://127.0.0.1:12345", "node", "token")
 	client.http = &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
 		<-request.Context().Done()
 		return nil, request.Context().Err()
@@ -146,7 +146,7 @@ func TestProbeUploaderQuarantinesTerminalStatuses(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			uploader := NewProbeUploader(spool, NewClient(server.URL, "node", "token"), ProbeUploaderOptions{Now: func() time.Time { return now }})
+			uploader := NewProbeUploader(spool, newTestClient(server.URL, "node", "token"), ProbeUploaderOptions{Now: func() time.Time { return now }})
 			if err := uploader.UploadOne(context.Background()); err == nil || strings.Contains(err.Error(), "terminal-body-secret") {
 				t.Fatalf("terminal error = %v", err)
 			}
@@ -194,7 +194,7 @@ func TestProbeUploaderResponseLossRetriesIdenticalBodyAndRoundIDs(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	uploader := NewProbeUploader(spool, NewClient(server.URL, "node", "token"), ProbeUploaderOptions{
+	uploader := NewProbeUploader(spool, newTestClient(server.URL, "node", "token"), ProbeUploaderOptions{
 		Now: func() time.Time { return clock }, Jitter: func(cap time.Duration) time.Duration { return cap },
 	})
 	if err := uploader.UploadOne(context.Background()); err == nil {
@@ -236,11 +236,11 @@ func TestProbeUploaderRetries408AndQuarantinesRedirect(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			uploader := NewProbeUploader(spool, NewClient(server.URL, "node", "token"), ProbeUploaderOptions{
+			uploader := NewProbeUploader(spool, newTestClient(server.URL, "node", "token"), ProbeUploaderOptions{
 				Now: func() time.Time { return now }, Jitter: func(cap time.Duration) time.Duration { return cap },
 			})
 			err = uploader.UploadOne(context.Background())
-			if err == nil || !IsAgentAPIStatus(err, test.status) {
+			if err == nil || !isAgentAPIStatus(err, test.status) {
 				t.Fatalf("UploadOne error = %v; want typed status %d", err, test.status)
 			}
 
@@ -274,10 +274,10 @@ func TestProbeUploaderConflictReturnsTypedStaleError(t *testing.T) {
 	if _, err := spool.Enqueue([]ProbeRound{testSpoolRound(now, "stale-config")}); err != nil {
 		t.Fatal(err)
 	}
-	uploader := NewProbeUploader(spool, NewClient(server.URL, "node", "token"), ProbeUploaderOptions{Now: func() time.Time { return now }})
+	uploader := NewProbeUploader(spool, newTestClient(server.URL, "node", "token"), ProbeUploaderOptions{Now: func() time.Time { return now }})
 	err := uploader.UploadOne(context.Background())
 	var staleErr *ProbeUploadStaleError
-	if !errors.As(err, &staleErr) || !IsAgentAPIStatus(err, http.StatusConflict) {
+	if !errors.As(err, &staleErr) || !isAgentAPIStatus(err, http.StatusConflict) {
 		t.Fatalf("conflict error = %T %v; want typed stale/status error", err, err)
 	}
 }
@@ -293,11 +293,11 @@ func TestProbeUploaderRoundConflictIsDistinctTerminalOutcome(t *testing.T) {
 	if _, err := spool.Enqueue([]ProbeRound{testSpoolRound(now, "round-conflict")}); err != nil {
 		t.Fatal(err)
 	}
-	uploader := NewProbeUploader(spool, NewClient(server.URL, "node", "token"), ProbeUploaderOptions{Now: func() time.Time { return now }})
+	uploader := NewProbeUploader(spool, newTestClient(server.URL, "node", "token"), ProbeUploaderOptions{Now: func() time.Time { return now }})
 	err := uploader.UploadOne(context.Background())
 	var conflict *ProbeUploadRoundConflictError
 	var stale *ProbeUploadStaleError
-	if !errors.As(err, &conflict) || errors.As(err, &stale) || !IsAgentAPIStatus(err, http.StatusConflict) {
+	if !errors.As(err, &conflict) || errors.As(err, &stale) || !isAgentAPIStatus(err, http.StatusConflict) {
 		t.Fatalf("conflict error = %T %v", err, err)
 	}
 }
@@ -309,7 +309,7 @@ func TestProbeUploaderSanitizesTransportErrorAndPersistsNetworkRetry(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	client := NewClient("http://127.0.0.1:12345", "node", "token")
+	client := newTestClient("http://127.0.0.1:12345", "node", "token")
 	client.http = &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("transport-token-secret")
 	})}
@@ -334,7 +334,7 @@ func TestProbeUploaderCancellationDoesNotConsumeAttempt(t *testing.T) {
 		t.Fatal(err)
 	}
 	started := make(chan struct{})
-	client := NewClient("http://127.0.0.1:12345", "node", "token")
+	client := newTestClient("http://127.0.0.1:12345", "node", "token")
 	client.http = &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
 		close(started)
 		<-request.Context().Done()
@@ -358,7 +358,7 @@ func TestProbeUploaderCancellationDoesNotConsumeAttempt(t *testing.T) {
 func TestProbeUploaderRunStopsWhileIdleOnContextCancellation(t *testing.T) {
 	now := time.Date(2026, 7, 17, 11, 30, 0, 0, time.UTC)
 	spool := newTestProbeSpool(t, func() time.Time { return now })
-	uploader := NewProbeUploader(spool, NewClient("http://127.0.0.1:12345", "node", "token"), ProbeUploaderOptions{
+	uploader := NewProbeUploader(spool, newTestClient("http://127.0.0.1:12345", "node", "token"), ProbeUploaderOptions{
 		Now: func() time.Time { return now }, PollInterval: time.Hour,
 	})
 	ctx, cancel := context.WithCancel(context.Background())

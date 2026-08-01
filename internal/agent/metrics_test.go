@@ -4,9 +4,30 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
+
+func parseDarwinConnectionCountsForTest(output string) (int64, int64, error) {
+	parser := &darwinConnectionParser{}
+	for _, line := range strings.Split(output, "\n") {
+		if err := parser.consume(line); err != nil {
+			return 0, 0, err
+		}
+	}
+	return parser.result()
+}
+
+func parseDarwinNetworkTotalsForTest(output string, allowlist map[string]struct{}) (networkTotals, error) {
+	parser := newDarwinNetworkParser(allowlist)
+	for _, line := range strings.Split(output, "\n") {
+		if err := parser.consume(line); err != nil {
+			return networkTotals{}, err
+		}
+	}
+	return parser.result()
+}
 
 func TestParseMemoryStatsIncludesSwapTotals(t *testing.T) {
 	stats := parseMemoryStats(`MemTotal:        2097152 kB
@@ -33,7 +54,11 @@ func TestTCPConnectionCountFromFileSkipsHeader(t *testing.T) {
 		t.Fatalf("write tcp fixture: %v", err)
 	}
 
-	if got := tcpConnectionCountFromFile(path); got != 2 {
+	got, err := tcpConnectionCountFromFileResult(path)
+	if err != nil {
+		t.Fatalf("count tcp connections: %v", err)
+	}
+	if got != 2 {
 		t.Fatalf("tcp connection count = %d, want 2 data rows", got)
 	}
 }
@@ -49,20 +74,23 @@ func TestTCPConnectionCountRejectsMalformedTable(t *testing.T) {
 }
 
 func TestParseDarwinConnectionCounts(t *testing.T) {
-	tcp, udp := parseDarwinConnectionCounts(`Active Internet connections
+	tcp, udp, err := parseDarwinConnectionCountsForTest(`Active Internet connections
 Proto Recv-Q Send-Q  Local Address          Foreign Address        (state)
 tcp4       0      0  127.0.0.1.80           *.*                    LISTEN
 tcp6       0      0  ::1.443                *.*                    LISTEN
 udp4       0      0  *.5353                 *.*
 udp6       0      0  *.5353                 *.*
 `)
+	if err != nil {
+		t.Fatalf("parse Darwin connection counts: %v", err)
+	}
 	if tcp != 2 || udp != 2 {
 		t.Fatalf("darwin connection counts = tcp %d udp %d, want 2/2", tcp, udp)
 	}
 }
 
 func TestParseDarwinConnectionCountsRejectsUnknownOutput(t *testing.T) {
-	if tcp, udp, err := parseDarwinConnectionCountsResult("netstat output changed\n"); err == nil || tcp != 0 || udp != 0 {
+	if tcp, udp, err := parseDarwinConnectionCountsForTest("netstat output changed\n"); err == nil || tcp != 0 || udp != 0 {
 		t.Fatalf("unknown Darwin connection output = %d/%d, %v; want explicit error", tcp, udp, err)
 	}
 }
@@ -99,11 +127,17 @@ en0   1500  <Link#4>    aa:bb:cc:dd:ee:ff  200     0      2048      300     0   
 en0   1500  192.0.2      192.0.2.5          200     -      2048      300     -       4096     -
 utun1 1380  <Link#9>                         10     0       100       10     0        100     0
 `
-	totals := parseDarwinNetworkTotals(output, nil)
+	totals, err := parseDarwinNetworkTotalsForTest(output, nil)
+	if err != nil {
+		t.Fatalf("parse Darwin network totals: %v", err)
+	}
 	if totals.InBytes != 2048 || totals.OutBytes != 4096 {
 		t.Fatalf("darwin network totals = %+v, want en0 link totals only", totals)
 	}
-	allowlisted := parseDarwinNetworkTotals(output, allowlistSet([]string{"utun1"}))
+	allowlisted, err := parseDarwinNetworkTotalsForTest(output, allowlistSet([]string{"utun1"}))
+	if err != nil {
+		t.Fatalf("parse allowlisted Darwin network totals: %v", err)
+	}
 	if allowlisted.InBytes != 100 || allowlisted.OutBytes != 100 {
 		t.Fatalf("allowlisted darwin network totals = %+v, want utun1", allowlisted)
 	}
@@ -113,8 +147,8 @@ func TestParseDarwinNetworkTotalsRejectsInvalidSelectedCounter(t *testing.T) {
 	output := `Name  Mtu   Network       Address            Ipkts Ierrs    Ibytes    Opkts Oerrs     Obytes  Coll
 en0   1500  <Link#4>    aa:bb:cc:dd:ee:ff  200     0       bad      300     0       4096     0
 `
-	if _, err := parseDarwinNetworkTotalsResult(output, nil); err == nil {
-		t.Fatal("parseDarwinNetworkTotalsResult accepted an invalid selected counter")
+	if _, err := parseDarwinNetworkTotalsForTest(output, nil); err == nil {
+		t.Fatal("Darwin network parser accepted an invalid selected counter")
 	}
 }
 

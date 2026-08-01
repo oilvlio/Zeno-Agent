@@ -708,13 +708,6 @@ func pingTimeoutMilliseconds(timeout time.Duration) int {
 	return milliseconds
 }
 
-func pingCommand(goos, address string, timeout time.Duration) (string, []string) {
-	if parsed, err := netip.ParseAddr(normalizeProbeHost(address)); err == nil {
-		return pingCommandForAddr(goos, parsed.Unmap(), timeout)
-	}
-	return pingCommandForAddress(goos, address, false, timeout)
-}
-
 func pingCommandForAddr(goos string, address netip.Addr, timeout time.Duration) (string, []string) {
 	addressText := address.String()
 	return pingCommandForAddress(goos, addressText, address.Is6(), timeout)

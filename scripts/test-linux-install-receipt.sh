@@ -3,7 +3,10 @@ set -euo pipefail
 [ "$(uname -s)" = Linux ] || { echo 'SKIP: Linux only'; exit 0; }
 [ "$(id -u)" -eq 0 ] || { echo 'SKIP: requires root'; exit 0; }
 systemctl show-environment >/dev/null 2>&1 || { echo 'SKIP: systemd is not running'; exit 0; }
-command -v go >/dev/null && command -v python3 >/dev/null || { echo 'SKIP: go/python3 unavailable'; exit 0; }
+if ! command -v go >/dev/null || ! command -v python3 >/dev/null; then
+  echo 'SKIP: go/python3 unavailable'
+  exit 0
+fi
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
 cd "$repo"

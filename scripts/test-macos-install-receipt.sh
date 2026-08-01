@@ -2,7 +2,10 @@
 set -euo pipefail
 [ "$(uname -s)" = Darwin ] || { echo 'SKIP: macOS only'; exit 0; }
 [ "$(id -u)" -eq 0 ] || { echo 'SKIP: requires root'; exit 0; }
-command -v go >/dev/null && command -v python3 >/dev/null || { echo 'SKIP: go/python3 unavailable'; exit 0; }
+if ! command -v go >/dev/null || ! command -v python3 >/dev/null; then
+  echo 'SKIP: go/python3 unavailable'
+  exit 0
+fi
 repo=$(cd "$(dirname "$0")/.." && pwd); cd "$repo"
 tmp=$(mktemp -d); label="li.shuijiao.zeno-agent.receipt-harness.$$"
 plist="/Library/LaunchDaemons/$label.plist"; nonce=$(openssl rand -hex 32)

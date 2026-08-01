@@ -22,8 +22,8 @@ func TestValidateControllerURLRequiresTLSForRemoteHosts(t *testing.T) {
 		"http://[::ffff:7f00:1]:18980",
 	}
 	for _, value := range valid {
-		if err := ValidateControllerURL(value); err != nil {
-			t.Fatalf("ValidateControllerURL(%q) = %v, want valid", value, err)
+		if err := ValidateControllerURLWithOptions(value, false); err != nil {
+			t.Fatalf("ValidateControllerURLWithOptions(%q) = %v, want valid", value, err)
 		}
 	}
 	invalid := []string{
@@ -37,14 +37,14 @@ func TestValidateControllerURLRequiresTLSForRemoteHosts(t *testing.T) {
 		"not a url",
 	}
 	for _, value := range invalid {
-		if err := ValidateControllerURL(value); err == nil {
-			t.Fatalf("ValidateControllerURL(%q) succeeded, want rejection", value)
+		if err := ValidateControllerURLWithOptions(value, false); err == nil {
+			t.Fatalf("ValidateControllerURLWithOptions(%q) succeeded, want rejection", value)
 		}
 	}
 }
 
 func TestClientRejectsRemotePlainHTTPBeforeSendingToken(t *testing.T) {
-	client := NewClient("http://198.51.100.10:18980", "node", "secret-token")
+	client := newTestClient("http://198.51.100.10:18980", "node", "secret-token")
 	err := client.PostHeartbeat(context.Background(), "online", "test", time.Now())
 	if err == nil || !strings.Contains(err.Error(), "must use https") {
 		t.Fatalf("PostHeartbeat error = %v, want remote HTTP rejection", err)
@@ -59,7 +59,7 @@ func TestValidateControllerURLExplicitInsecureHTTPContract(t *testing.T) {
 		"http://[::ffff:192.168.1.1]:18980",
 	}
 	for _, value := range allowed {
-		if err := ValidateControllerURL(value); err == nil {
+		if err := ValidateControllerURLWithOptions(value, false); err == nil {
 			t.Fatalf("default validation accepted insecure URL %q", value)
 		}
 		if err := ValidateControllerURLWithOptions(value, true); err != nil {
@@ -105,7 +105,7 @@ func TestClientAddsAgentAuthHeadersAndPostsState(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "node-a", "secret-token")
+	client := newTestClient(server.URL, "node-a", "secret-token")
 	sample := StateSample{
 		TS:                 1782990000,
 		CPUPercent:         12.5,
@@ -146,7 +146,7 @@ func TestClientPostStateReusesGeneratedIDForSameSampleRetry(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "node-a", "secret-token")
+	client := newTestClient(server.URL, "node-a", "secret-token")
 	sample := StateSample{TS: 1782990000, CPUPercent: 12.5, MemoryUsedBytes: 1024, MemoryTotalBytes: 2048, DiskUsedBytes: 4096, DiskTotalBytes: 8192, NetInTotalBytes: 10, NetOutTotalBytes: 20, UptimeSeconds: 30}
 	if err := client.PostState(context.Background(), sample); err != nil {
 		t.Fatalf("first post state: %v", err)
@@ -162,67 +162,35 @@ func TestClientPostStateReusesGeneratedIDForSameSampleRetry(t *testing.T) {
 	}
 }
 
-func TestClientFetchTargetsAndPostsProbeRounds(t *testing.T) {
-	var posted bool
+func TestClientFetchesProbeConfig(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/agent/v1/probe-targets":
-			if r.Header.Get("X-Node-ID") != "node-a" || r.Header.Get("Authorization") != "Bearer token" {
-				t.Fatalf("missing auth headers on target fetch")
-			}
-			_ = json.NewEncoder(w).Encode(ProbeTargetsResponse{Version: 7, Targets: []ProbeTarget{{ID: "google", Name: "Google", Type: "tcping", Address: "8.8.8.8", Count: 3, TimeoutMS: 1000, IntervalSec: 60}}})
-		case "/api/agent/v1/probe-results":
-			posted = true
-			var body ProbeResultsRequest
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				t.Fatalf("decode probe body: %v", err)
-			}
-			if body.ConfigVersion != 7 || len(body.Rounds) != 1 || body.Rounds[0].RoundID != "round-1" || body.Rounds[0].TargetID != "google" || len(body.Rounds[0].Samples) != 1 {
-				t.Fatalf("probe results body = %+v, want google round with sample", body)
-			}
-			w.WriteHeader(http.StatusAccepted)
-		default:
+		if r.URL.Path != "/api/agent/v1/probe-targets" {
 			t.Fatalf("unexpected path %s", r.URL.Path)
 		}
+		if r.Header.Get("X-Node-ID") != "node-a" || r.Header.Get("Authorization") != "Bearer token" {
+			t.Fatalf("missing auth headers on target fetch")
+		}
+		_ = json.NewEncoder(w).Encode(ProbeTargetsResponse{Version: 7, Targets: []ProbeTarget{{ID: "google", Name: "Google", Type: "tcping", Address: "8.8.8.8", Count: 3, TimeoutMS: 1000, IntervalSec: 60}}})
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL+"/", "node-a", "token")
-	targets, err := client.FetchProbeTargets(context.Background())
+	client := newTestClient(server.URL+"/", "node-a", "token")
+	config, err := client.FetchProbeConfig(context.Background())
 	if err != nil {
-		t.Fatalf("fetch probe targets: %v", err)
+		t.Fatalf("fetch probe config: %v", err)
 	}
-	if len(targets) != 1 || targets[0].ID != "google" {
-		t.Fatalf("targets = %+v, want google", targets)
-	}
-	latency := 10.5
-	err = client.PostProbeResults(context.Background(), []ProbeRound{{RoundID: "round-1", ConfigVersion: 7, TargetID: "google", TS: time.Unix(1782990000, 0), Type: "tcping", Samples: []ProbeSample{{Seq: 1, Success: true, LatencyMS: &latency}}}})
-	if err != nil {
-		t.Fatalf("post probe results: %v", err)
-	}
-	if !posted {
-		t.Fatalf("probe results were not posted")
+	if config.Version != 7 || len(config.Targets) != 1 || config.Targets[0].ID != "google" {
+		t.Fatalf("config = %+v, want version 7 with google", config)
 	}
 }
 
-func TestClientRejectsMixedProbeConfigVersionsBeforePosting(t *testing.T) {
-	called := false
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		called = true
-		w.WriteHeader(http.StatusAccepted)
-	}))
-	defer server.Close()
-
-	client := NewClient(server.URL, "node-a", "token")
-	err := client.PostProbeResults(context.Background(), []ProbeRound{
+func TestProbeSpoolRejectsMixedConfigVersionsBeforePersisting(t *testing.T) {
+	_, err := marshalProbeResults([]ProbeRound{
 		{RoundID: "round-legacy", ConfigVersion: 0},
 		{RoundID: "round-current", ConfigVersion: 7},
 	})
 	if err == nil || !strings.Contains(err.Error(), "mixed probe config versions") {
 		t.Fatalf("error = %v, want mixed-version rejection", err)
-	}
-	if called {
-		t.Fatal("mixed-version probe batch reached controller")
 	}
 }
 
@@ -234,7 +202,7 @@ func TestClientErrorDoesNotExposeControllerResponseBody(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "node-a", "token")
+	client := newTestClient(server.URL, "node-a", "token")
 	err := client.PostHeartbeat(context.Background(), "online", "test", time.Now())
 	if err == nil {
 		t.Fatal("expected controller error")
@@ -254,8 +222,8 @@ func TestClientRejectsOversizedJSONResponse(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "node-a", "token")
-	_, err := client.FetchProbeTargets(context.Background())
+	client := newTestClient(server.URL, "node-a", "token")
+	_, err := client.FetchProbeConfig(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "response exceeds") {
 		t.Fatalf("error = %v, want bounded response error", err)
 	}
@@ -277,9 +245,9 @@ func TestClientDoesNotFollowRedirectsWithBearerToken(t *testing.T) {
 	}))
 	defer redirectServer.Close()
 
-	client := NewClient(redirectServer.URL, "node", "secret-token")
+	client := newTestClient(redirectServer.URL, "node", "secret-token")
 	err := client.PostHeartbeat(context.Background(), "online", "test", time.Now())
-	if err == nil || !IsAgentAPIStatus(err, http.StatusFound) {
+	if err == nil || !isAgentAPIStatus(err, http.StatusFound) {
 		t.Fatalf("PostHeartbeat error = %v, want local 302 status error", err)
 	}
 	if leakHits != 0 {

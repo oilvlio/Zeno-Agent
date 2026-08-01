@@ -46,7 +46,7 @@ jobs:
       - run: go test -race ./...
       - run: go vet ./...
       - run: go install honnef.co/go/tools/cmd/staticcheck@v0.7.0
-      - run: $(go env GOPATH)/bin/staticcheck ./...
+      - run: '"$(go env GOPATH)/bin/staticcheck" ./...'
       - run: go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
       - name: Run vulnerability gate for every released operating system
         run: |
@@ -109,7 +109,8 @@ jobs:
           done
       - name: Validate artifact-specific SBOM coverage
         run: |
-          export SBOM_VERSION="$(tr -d '\r\n' < VERSION)"
+          SBOM_VERSION="$(tr -d '\r\n' < VERSION)"
+          export SBOM_VERSION
           if [[ "${GITHUB_REF:-}" == refs/tags/* ]]; then
             export SBOM_VERSION="$GITHUB_REF_NAME"
           fi

@@ -27,7 +27,7 @@ func TestPingCommandUsesPlatformTimeoutUnits(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.goos, func(t *testing.T) {
-			command, args := pingCommand(test.goos, "example.com", 5*time.Second)
+			command, args := pingCommandForAddress(test.goos, "example.com", false, 5*time.Second)
 			if command != "ping" || !reflect.DeepEqual(args, test.want) {
 				t.Fatalf("ping command = %q %q, want ping %q", command, args, test.want)
 			}

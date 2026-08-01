@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"bufio"
 	"fmt"
 	"strconv"
 	"strings"
@@ -55,23 +54,6 @@ func parseDarwinLoadAverages(output string) (load1, load5, load15 float64) {
 	return 0, 0, 0
 }
 
-func parseDarwinConnectionCounts(output string) (tcp int64, udp int64) {
-	tcp, udp, _ = parseDarwinConnectionCountsResult(output)
-	return tcp, udp
-}
-
-func parseDarwinConnectionCountsResult(output string) (tcp int64, udp int64, err error) {
-	parser := darwinConnectionParser{}
-	scanner := bufio.NewScanner(strings.NewReader(output))
-	for scanner.Scan() {
-		parser.consume(scanner.Text())
-	}
-	if err := scanner.Err(); err != nil {
-		return 0, 0, err
-	}
-	return parser.result()
-}
-
 type darwinConnectionParser struct {
 	tcp         int64
 	udp         int64
@@ -102,25 +84,6 @@ func (p *darwinConnectionParser) result() (int64, int64, error) {
 		return 0, 0, fmt.Errorf("darwin netstat connection output is missing its header")
 	}
 	return p.tcp, p.udp, nil
-}
-
-func parseDarwinNetworkTotals(output string, allowlist map[string]struct{}) networkTotals {
-	totals, _ := parseDarwinNetworkTotalsResult(output, allowlist)
-	return totals
-}
-
-func parseDarwinNetworkTotalsResult(output string, allowlist map[string]struct{}) (networkTotals, error) {
-	parser := newDarwinNetworkParser(allowlist)
-	scanner := bufio.NewScanner(strings.NewReader(output))
-	for scanner.Scan() {
-		if err := parser.consume(scanner.Text()); err != nil {
-			return networkTotals{}, err
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return networkTotals{}, err
-	}
-	return parser.result()
 }
 
 type darwinNetworkParser struct {

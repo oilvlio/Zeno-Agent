@@ -251,23 +251,6 @@ func (s *ProbeSpool) Next(now time.Time) (*ProbeSpoolItem, error) {
 	return nil, nil
 }
 
-// Load returns a validated copy of a pending item, including its durable retry
-// metadata. It does not apply the due-time or TTL filters used by Next.
-func (s *ProbeSpool) Load(id string) (*ProbeSpoolItem, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	path, err := s.pendingPathLocked(id)
-	if err != nil {
-		return nil, err
-	}
-	envelope, _, err := s.readEnvelopeLocked(path)
-	if err != nil {
-		return nil, err
-	}
-	return probeSpoolItemFromEnvelope(id, envelope), nil
-}
-
 // ScheduleRetry atomically persists the attempt counter and retry gate before
 // UploadOne reports the retryable failure to its caller.
 func (s *ProbeSpool) ScheduleRetry(id string, attempt uint32, nextAt time.Time) error {
