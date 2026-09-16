@@ -243,6 +243,86 @@ func TestAgentHTTP2BlackholeRecovery(t *testing.T) {
 	}
 }
 
+// Unlike the short-deadline scenario above, keep an ambiguous POST in flight
+// until the transport's lost-PING health check closes the connection. A request
+// cancellation would not exercise the transport's retry decision on that error.
+func TestAgentHTTP2AmbiguousPOSTHealthCheckNoReplay(t *testing.T) {
+	t.Parallel()
+	var posts atomic.Int64
+	postConn := make(chan string, 1)
+	s := h2TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.ProtoMajor != 2 || r.TLS == nil || r.TLS.NegotiatedProtocol != "h2" || r.Header.Get("Authorization") != "Bearer h2-secret" || r.Header.Get("X-Node-ID") != "h2-node" {
+			http.Error(w, "protocol/auth", http.StatusBadRequest)
+			return
+		}
+		if r.Method == http.MethodPost {
+			body, err := io.ReadAll(r.Body)
+			if err != nil || !strings.Contains(string(body), `"value":"once"`) {
+				http.Error(w, "incomplete POST", http.StatusBadRequest)
+				return
+			}
+			if posts.Add(1) == 1 {
+				postConn <- r.RemoteAddr
+			}
+		}
+		w.Header().Set("X-Connection", r.RemoteAddr)
+		_, _ = io.WriteString(w, "{}")
+	}))
+	p := newH2FaultProxy(t, s.Listener.Addr().String())
+	c := h2ProxyClient(t, s, p)
+	original, err := h2Request(c, "/warm", 3*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := h2Request(c, "/reuse", 3*time.Second)
+	if err != nil || again != original || p.accepted.Load() != 1 {
+		t.Fatalf("warm reuse: original=%q again=%q sockets=%d err=%v", original, again, p.accepted.Load(), err)
+	}
+	// Only replies (including PING ACKs) disappear. The server receives and
+	// executes the complete POST; the relay does not inject an EOF or RST.
+	p.mode.Store(2)
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+	started := time.Now()
+	err = c.doJSON(ctx, http.MethodPost, "/ambiguous-post", map[string]string{"value": "once"}, nil)
+	elapsed := time.Since(started)
+	if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("POST ended through request cancellation, not health-check closure: elapsed=%s ctx=%v err=%v", elapsed, ctx.Err(), err)
+	}
+	// Go 1.25.12 closeForLostPing uses this error; reject generic failures
+	// (including a client timeout) rather than merely asserting err != nil.
+	if err == nil || !strings.Contains(err.Error(), "http2: client connection lost") {
+		t.Fatalf("want lost-PING connection error, elapsed=%s err=%v", elapsed, err)
+	}
+	if elapsed < 10*time.Second || elapsed > 20*time.Second {
+		t.Fatalf("health-check closure outside expected 10-20s window: %s", elapsed)
+	}
+	if posts.Load() != 1 || p.accepted.Load() != 1 {
+		t.Fatalf("POST replayed or not executed: executions=%d sockets=%d", posts.Load(), p.accepted.Load())
+	}
+	select {
+	case conn := <-postConn:
+		if conn != original {
+			t.Fatalf("POST did not execute on warmed connection: got=%s want=%s", conn, original)
+		}
+	default:
+		t.Fatal("server did not receive complete POST")
+	}
+	if p.droppedDown.Load() == 0 || p.droppedUp.Load() != 0 {
+		t.Fatalf("expected downstream-only TLS loss: up=%d down=%d", p.droppedUp.Load(), p.droppedDown.Load())
+	}
+	// The same client must remain usable without replacing its transport or
+	// explicitly closing idle connections. This is a GET, not a POST retry.
+	recovered, recoverErr := h2Request(c, "/recover", 3*time.Second)
+	if recoverErr != nil || recovered == original || p.accepted.Load() != 2 {
+		t.Fatalf("fresh h2 recovery: old=%s new=%s sockets=%d err=%v", original, recovered, p.accepted.Load(), recoverErr)
+	}
+	if posts.Load() != 1 {
+		t.Fatalf("ambiguous POST executions after recovery=%d, want 1", posts.Load())
+	}
+	t.Logf("POST failed at health-check closure in %s (context still live): %v; executions=%d old=%s recovered=%s", elapsed, err, posts.Load(), original, recovered)
+}
+
 // A silent TCP receiver can block a TLS write, rather than accepting and
 // discarding it. The real socket buffers here are small enough to force that.
 func TestAgentHTTP2BlockedWriteRecovery(t *testing.T) {

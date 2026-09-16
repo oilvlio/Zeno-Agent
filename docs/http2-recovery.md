@@ -44,6 +44,15 @@ RoundTripper or replace production timeout settings.
   recovers on a different socket within 19s, without transport replacement or
   CloseIdleConnections. Downstream loss executes POST exactly once; upstream
   loss never executes it. Repeated short deadlines exercise reset accumulation.
+- Ambiguous POST at health-check closure: downstream-only loss after confirmed
+  reuse; the server receives the complete authenticated POST on the original
+  TLS/ALPN h2 socket. The request has a 25s context (the production client timeout
+  stays 30s), with no early cancellation. Require Go 1.25.12's lost-PING error
+  `http2: client connection lost` within 10-20s while the context is still live.
+  Require exactly one POST execution and one accepted socket when it returns;
+  a subsequent GET on the same client must recover on a second h2 socket and
+  leave the POST execution count at one. This covers the transport retry
+  decision after health-check closure, not just canceled-stream behavior.
 - Blocked write: stop reading the original TCP connection with small kernel
   buffers, send a large POST and require a write error before a 9s request
   deadline, followed by working h2 on a new connection.
@@ -57,6 +66,46 @@ RoundTripper or replace production timeout settings.
 The original client failed all three drop cases after 19s and the blocked-write
 case at its 9s request deadline before the production change. The fixed client
 recovered drops in approximately 15.1s and blocked writes in approximately 5.3s.
+
+## Follow-up verification evidence
+
+Using `/root/zeno-toolchains/go1.25.12/go/bin/go` (`go1.25.12 linux/amd64`):
+
+- Negative control: temporarily set `tr.HTTP2 = nil` in the test-only client
+  helper, then run the new test with `-race -count=1 -v`. It failed at
+  25.012085876s with `context deadline exceeded`, specifically rejecting request
+  cancellation instead of health-check closure. That temporary edit was removed;
+  no production code was modified.
+- `go test -race ./internal/agent -run '^TestAgentHTTP2AmbiguousPOSTHealthCheckNoReplay$' -count=5 -v`
+  passed all five runs. Each returned `http2: client connection lost` with a live
+  context and exactly one POST execution, then recovered on a distinct h2 socket.
+  Observed closure times: 15.006579129s, 15.000706937s, 15.003684565s,
+  15.004023057s and 15.005055502s. Package result: 76.193s, no race reports.
+- `go test -race ./... -count=1` passed all packages (root 1.571s,
+  cmd/zeno-agent 2.338s, internal/agent 34.186s), with no race reports.
+- `go vet ./...` and `git diff --check` passed.
+
+## Verifying a running agent's h2 without credentials in logs
+
+Prefer read-only inspection of **existing client-facing TLS terminator / CDN
+access logs**, selecting only timestamp, client address, request path (without
+query string), and request HTTP version / negotiated ALPN. Correlate those with
+Tarek's agent connection destination and local/remote socket tuple (read-only
+`ss -ntp`) and heartbeat timing. A uniquely attributable agent request recorded
+as HTTP/2 at that terminator proves the actual client connection used h2; an
+origin log behind a CDN or reverse proxy may describe a different hop and is
+not sufficient. Shared NAT or ambiguous traffic attribution must be called out.
+Do not print Authorization, cookies, full request dumps, or unrestricted log
+records. This uses existing telemetry only, without restarting the agent or
+changing production configuration.
+
+If the needed client-facing protocol field is not already recorded, report the
+live protocol as unverified rather than enabling verbose HTTP/2 debugging.
+A separately run curl/openssl probe proves endpoint capability, not the running
+agent's protocol. Passive ClientHello ALPN only proves an offer; TLS 1.3 encrypts
+server ALPN selection, and socket listings alone do not identify HTTP version.
+No live Tarek protocol verification was performed as part of this test-only
+follow-up; these are observation recommendations, not deployment evidence.
 
 ## Scope and limitations
 
