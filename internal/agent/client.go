@@ -53,6 +53,17 @@ func NewClientWithOptions(baseURL, nodeID, token string, options ClientOptions) 
 
 func newAgentHTTPClient() *http.Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
+	// A request deadline cancels an HTTP/2 stream, not necessarily its TCP
+	// connection. Probe silent connections so periodic requests cannot keep
+	// selecting a blackholed socket. Bound blocked writes as well: a PING can
+	// otherwise be stuck behind a write holding the connection's write lock.
+	// These are connection-health limits, not request retries; in particular,
+	// an ambiguously completed POST must not be replayed here.
+	transport.HTTP2 = &http.HTTP2Config{
+		SendPingTimeout:  10 * time.Second,
+		PingTimeout:      5 * time.Second,
+		WriteByteTimeout: 5 * time.Second,
+	}
 	return &http.Client{
 		Timeout: 30 * time.Second,
 		// Agent API requests carry the bearer token. Do not follow redirects:
