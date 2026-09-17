@@ -1,0 +1,32 @@
+name: Sync release notes
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/releases/*.md'
+      - '.github/workflows/release-notes.yml'
+permissions:
+  contents: read
+jobs:
+  notes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Update current published release description only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(tr -d '\r\n' < VERSION)"
+          [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          notes="docs/releases/$version.md"
+          test -s "$notes"
+          gh release view "$version" --repo "$GITHUB_REPOSITORY" --json tagName,isDraft
+          gh release edit "$version" --repo "$GITHUB_REPOSITORY" --notes-file "$notes"
+          gh release view "$version" --repo "$GITHUB_REPOSITORY" --json body --jq '.body' > /tmp/published-notes.md
+          python3 - "$notes" /tmp/published-notes.md <<'PY'
+          import pathlib, sys
+          assert pathlib.Path(sys.argv[1]).read_text().strip() == pathlib.Path(sys.argv[2]).read_text().strip()
+          PY

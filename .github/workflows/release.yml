@@ -59,6 +59,8 @@ jobs:
       - run: bash scripts/check-sensitive-files.sh
       - shell: pwsh
         run: '[void][scriptblock]::Create((Get-Content -Raw install.ps1))'
+      - name: Require versioned release notes
+        run: test -s "docs/releases/$GITHUB_REF_NAME.md"
       - name: Build release assets
         run: |
           set -euo pipefail
@@ -155,6 +157,7 @@ jobs:
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
+          body_path: docs/releases/${{ github.ref_name }}.md
           files: |
             dist/*.tar.gz
             dist/*.zip
