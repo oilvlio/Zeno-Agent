@@ -29,7 +29,10 @@ comment saying it has no effect is stale in this toolchain: the actual TLS
 fault tests demonstrate all three configured timers taking effect. The public
 standard-library field is **SendPingTimeout**, not ReadIdleTimeout (the latter
 is the x/net/http2 transport name). No x/net dependency or ConfigureTransports
-is necessary for the pinned Go 1.25.12 toolchain.
+was necessary for the original Go 1.25.12 toolchain. The release now pins
+Go 1.26.8, the latest patch of the oldest supported Go release line; the
+production HTTP/2 configuration remains unchanged. Historical evidence below
+retains its original toolchain labels.
 
 ## Tests
 
@@ -84,6 +87,44 @@ Using `/root/zeno-toolchains/go1.25.12/go/bin/go` (`go1.25.12 linux/amd64`):
 - `go test -race ./... -count=1` passed all packages (root 1.571s,
   cmd/zeno-agent 2.338s, internal/agent 34.186s), with no race reports.
 - `go vet ./...` and `git diff --check` passed.
+
+## v0.6.8 security-toolchain revalidation
+
+The public v0.6.7 tag is preserved; its release vulnerability gate failed before
+assets were published. The replacement candidate is v0.6.8.
+
+- Go 1.25.12 reproduced govulncheck exit 3 for GO-2026-6218
+  (CVE-2026-56860), GO-2026-6090 (CVE-2026-56862), GO-2026-5972
+  (CVE-2026-33818), and GO-2026-5026 (CVE-2026-39821). The database lists
+  Go 1.25.13 as the first fixes in that line, but Go 1.25 is no longer supported.
+- Pin Go 1.26.8: the latest patch in the oldest currently supported line, rather
+  than making the larger jump to Go 1.27. The official linux/amd64 archive was
+  SHA-256 verified as
+  `d0f743b33e8d8945e6b1f432edd15785c70507121d6e2a723b21285eddf8b57b`
+  against `https://go.dev/dl/?mode=json` before extraction.
+- Upgrade only `golang.org/x/sys` from v0.33.0 to v0.44.0, the first fixed
+  version for GO-2026-5024 (CVE-2026-39824). This was an uncalled Windows
+  package-level finding, also visible as a module-level finding on Darwin;
+  it is removed rather than ignored. `go mod tidy` normalizes the minimum
+  language directive to `go 1.25.0`; the selected toolchain is Go 1.26.8.
+- `govulncheck@v1.6.0 -show verbose ./...` with `GOARCH=amd64` and each of
+  `GOOS=linux`, `darwin`, `windows` reports **No vulnerabilities found**, with
+  no residual package/module findings. The release security gate is unchanged.
+- `go test ./... -count=1`, `go test -race ./... -count=1`, `go vet ./...`, and
+  `staticcheck@v0.7.0 ./...` pass. Three repeated race runs of
+  `go test -race ./internal/agent -run '^TestAgentHTTP2' -count=3 -v` pass in
+  91.554s: silent drops recover around 15.11s, blocked writes around 5.28s,
+  and ambiguous POSTs fail at 15.002753308s, 15.001185593s, and 15.001638869s
+  while their contexts remain live, execute exactly once, and recover on a
+  different h2 socket. Healthy concurrency, slow handlers, cancellation,
+  response-body timeouts, and redirect refusal also pass.
+- All seven release targets cross-build with CGO disabled (linux/arm uses
+  GOARM=6). The linux/amd64 v0.6.8 candidate passes local-only `-install-check`
+  and `govulncheck -mode=binary`. This is local candidate evidence, not a
+  published artifact, native Windows/macOS test, or production deployment.
+
+Logs, candidate binaries, archive metadata and checksums are retained under
+`/root/zeno-h2-evidence/v068/`. No production HTTP/2 code or timer changed.
 
 ## Verifying a running agent's h2 without credentials in logs
 
