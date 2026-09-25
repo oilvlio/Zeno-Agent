@@ -94,7 +94,7 @@ func TestProbeSpoolPersistsCanonicalBatchAcrossRestart(t *testing.T) {
 func TestDefaultProbeSpoolLimits(t *testing.T) {
 	limits := DefaultProbeSpoolLimits()
 	if limits.TTL != 72*time.Hour || limits.MaxPendingItems != 16384 || limits.MaxPendingBytes != 256<<20 ||
-		limits.MaxItemBytes != 1<<20 || limits.MinFreeBytes != 512<<20 || limits.MaxQuarantineItems != 128 || limits.MaxQuarantineBytes != 16<<20 {
+		limits.MaxItemBytes != 1<<20 || limits.MinFreeBytes != 64<<20 || limits.MaxQuarantineItems != 128 || limits.MaxQuarantineBytes != 16<<20 {
 		t.Fatalf("unexpected default limits: %+v", limits)
 	}
 }

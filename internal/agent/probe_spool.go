@@ -37,7 +37,11 @@ func DefaultProbeSpoolLimits() ProbeSpoolLimits {
 		MaxPendingItems:    16384,
 		MaxPendingBytes:    256 << 20,
 		MaxItemBytes:       1 << 20,
-		MinFreeBytes:       512 << 20,
+		// One probe round is a few KiB of JSON; the spool itself can never
+		// hold more than MaxPendingBytes + MaxQuarantineBytes. 64MiB keeps a
+		// safety margin without locking small (512MiB-class) machines out of
+		// probe reporting entirely when their disk runs low.
+		MinFreeBytes:       64 << 20,
 		MaxQuarantineItems: 128,
 		MaxQuarantineBytes: 16 << 20,
 	}
